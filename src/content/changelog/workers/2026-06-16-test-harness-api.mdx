@@ -1,0 +1,80 @@
+---
+title: Run Worker integration tests with createTestHarness
+description: Test Workers as applications from Node.js test runners.
+products:
+  - workers
+date: 2026-06-16
+publish_future_dated_entry: true
+---
+
+import { TypeScriptExample } from "~/components";
+
+Wrangler now provides `createTestHarness()`, an API for testing Workers as applications from any Node.js test runner. It works with Wrangler projects and projects built with the [Cloudflare Vite plugin](/workers/vite-plugin/).
+
+Use `createTestHarness()` when you want tests to exercise your Worker as an application, using the same build output and configuration that Wrangler or the [Cloudflare Vite plugin](/workers/testing/test-harness/examples/#test-workers-built-by-the-cloudflare-vite-plugin) produces. The test harness starts a local Worker server and provides helpers for [dispatching requests](/workers/testing/test-harness/examples/#test-multiple-workers-and-route-dispatch), [resetting storage](/workers/testing/test-harness/write-your-first-test/#create-a-test-harness), and [inspecting runtime logs](/workers/testing/test-harness/examples/#assert-against-worker-logs).
+
+This is useful for tests that need to:
+
+- [Route requests across multiple Workers](/workers/testing/test-harness/examples/#test-multiple-workers-and-route-dispatch).
+- [Mock outbound `fetch()` requests](/workers/testing/test-harness/examples/#mock-outbound-requests) with Node.js request mocking libraries such as [MSW](https://mswjs.io/).
+- [Run Playwright tests against a Worker started by the test harness](/workers/testing/test-harness/examples/#use-with-playwright).
+
+For example, this test starts two Workers and mocks an upstream API:
+
+<TypeScriptExample filename="test/index.test.ts">
+
+```ts
+import { afterAll, afterEach, beforeAll, test } from "vitest";
+import { http, HttpResponse } from "msw";
+import { setupServer } from "msw/node";
+import { createTestHarness } from "wrangler";
+
+const mock = setupServer();
+const server = createTestHarness({
+	workers: [
+		/** Includes `"routes": ["example.com/*"]` */
+		{ configPath: "./web/wrangler.jsonc" },
+		/** Includes `"routes": ["api.example.com/v1/*"]` */
+		{ configPath: "./api/wrangler.jsonc" },
+	],
+});
+
+beforeAll(async () => {
+	mock.listen({ onUnhandledRequest: "error" });
+	await server.listen();
+});
+
+afterEach(async () => {
+	mock.resetHandlers();
+	await server.reset();
+});
+
+afterAll(async () => {
+	mock.close();
+	await server.close();
+});
+
+test("routes requests to each Worker", async ({ expect }) => {
+	mock.use(
+		http.get("http://identity.example.com/profile/:id", ({ params }) => {
+			return HttpResponse.json({ id: params.id, name: "Ada" });
+		})
+	);
+
+	const apiResponse = await server.fetch(
+		"https://api.example.com/v1/users/123"
+	);
+	expect(await apiResponse.text()).toContain("Ada");
+
+	const webResponse = await server.fetch(
+		"https://example.com/users/123"
+	);
+	expect(await webResponse.text()).toContain("Ada");
+});
+```
+
+</TypeScriptExample>
+
+> For unit tests, Cloudflare recommends [`@cloudflare/vitest-pool-workers`](/workers/testing/vitest-integration/).
+
+For setup steps and more patterns, see the [Test harness guide](/workers/testing/test-harness/) and [examples](/workers/testing/test-harness/examples/).

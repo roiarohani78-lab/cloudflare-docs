@@ -55,7 +55,7 @@ const server = createTestHarness({
 
 ## Mock outbound requests
 
-Workers started by `createTestHarness()` route outbound `fetch()` requests through `globalThis.fetch()`. Use Node.js request mocking libraries, such as [MSW](https://mswjs.io/), to mock upstream services.
+Workers started by `createTestHarness()` proxy outbound `fetch()` requests through `globalThis.fetch()`. Use Node.js request mocking libraries, such as [MSW](https://mswjs.io/), to mock upstream services.
 
 <TypeScriptExample>
 
